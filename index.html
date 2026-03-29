@@ -6,54 +6,6 @@
 <title>Rutin Takip — Ali & Faruk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<!-- Firebase SDK -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-  // ══════════════════════════════════════════════════════════════════
-  // 🔥 FIREBASE YAPILANDIRMASI — BURAYA KENDİ BİLGİLERİNİ YAZ
-  // ══════════════════════════════════════════════════════════════════
-  const firebaseConfig = {
-    apiKey: "AIzaSyAitWnYV1KmAJSOxzfETHE5K0V7D8w1yJI",
-  authDomain: "rutin-takip-web.firebaseapp.com",
-  projectId: "rutin-takip-web",
-  storageBucket: "rutin-takip-web.firebasestorage.app",
-  messagingSenderId: "604716642468",
-  appId: "1:604716642468:web:5a4c7ca167135aba29f631",
-  measurementId: "G-6S069LYCP9"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const firestore = getFirestore(app);
-  const DB_DOC = doc(firestore, "rutin", "shared");
-
-  // Global'e bağla (script tag'daki fonksiyonlarla iletişim için)
-  window._fbSave = async function(dbData) {
-    try {
-      await setDoc(DB_DOC, { data: JSON.stringify(dbData) });
-    } catch(e) {
-      console.error("Firebase kayıt hatası:", e);
-      // Hata durumunda localStorage'a yedekle
-      localStorage.setItem('rt_v4', JSON.stringify(dbData));
-    }
-  };
-
-  window._fbListen = function(callback) {
-    onSnapshot(DB_DOC, (snap) => {
-      if (snap.exists()) {
-        try {
-          const parsed = JSON.parse(snap.data().data);
-          callback(parsed);
-        } catch(e) {}
-      }
-    });
-  };
-
-  // Firebase hazır olduğunu bildir
-  window._fbReady = true;
-  document.dispatchEvent(new Event('firebase-ready'));
-</script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -207,31 +159,42 @@ body{
 .add-btn-shared:hover{background:var(--shared-s);border-color:var(--shared);}
 
 /* ─── TABLE ──────────────────────────────────────────────────── */
-.table-wrap{overflow-x:auto;padding:8px 16px 16px;}
-table{border-collapse:collapse;width:100%;min-width:max-content;}
+.table-outer{padding:8px 16px 16px;}
+.table-wrap{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  border-radius:var(--r);
+  border:1px solid var(--bdr);
+  position:relative;
+}
+table{border-collapse:collapse;table-layout:fixed;width:max-content;}
 th,td{border:1px solid var(--bdr);}
 
 th.th-r{
-  min-width:160px;text-align:left;padding:9px 12px;
+  width:140px;min-width:140px;
+  text-align:left;padding:9px 10px;
   font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;
   color:var(--txt3);background:var(--s1);
   position:sticky;left:0;z-index:5;
+  box-shadow:2px 0 5px rgba(0,0,0,.08);
 }
 th.th-d{
-  min-width:32px;width:32px;text-align:center;
+  width:34px;min-width:34px;
+  text-align:center;
   padding:5px 2px;font-size:9px;font-weight:600;
   color:var(--txt3);background:var(--s1);line-height:1.4;
 }
 th.th-d.wknd{color:var(--ali);}
 th.th-d.th-today{
   background:var(--txt);color:var(--white);
-  font-weight:700;border-radius:4px;
+  font-weight:700;
 }
 
 /* section rows */
 tr.sec-hdr td{
-  padding:7px 12px;font-size:9px;font-weight:800;
+  padding:7px 10px;font-size:9px;font-weight:800;
   letter-spacing:2px;text-transform:uppercase;
+  width:140px;position:sticky;left:0;
 }
 tr.sec-ali td{background:var(--ali-s);color:var(--ali);border-color:var(--ali-m);}
 tr.sec-faruk td{background:var(--faruk-s);color:var(--faruk);border-color:var(--faruk-m);}
@@ -239,8 +202,10 @@ tr.sec-shared td{background:var(--shared-s);color:var(--shared);border-color:var
 
 /* name cell */
 td.td-name{
-  min-width:160px;padding:0 10px;
+  width:140px;min-width:140px;
+  padding:0 8px;overflow:hidden;
   background:var(--white);position:sticky;left:0;z-index:2;
+  box-shadow:2px 0 5px rgba(0,0,0,.08);
 }
 tr.row-ali td.td-name{border-left:3px solid var(--ali);background:rgba(29,106,229,.03);}
 tr.row-faruk td.td-name{border-left:3px solid var(--faruk);background:rgba(10,149,73,.03);}
@@ -516,7 +481,7 @@ td.dc.dc-note::after{
     <button class="add-btn add-btn-faruk" onclick="openAddRoutine('faruk')">+ Faruk Rutini</button>
     <button class="add-btn add-btn-shared" onclick="openAddRoutine('shared')">+ Ortak</button>
   </div>
-  <div class="table-wrap"><table id="tbl"></table></div>
+  <div class="table-outer"><div class="table-wrap"><table id="tbl"></table></div></div>
 </div>
 
 <!-- ══════════════════════════════ HEDEFLER PAGE ═════════════════════════════ -->
@@ -622,7 +587,8 @@ const SEC_LABELS={ali:'Ali — Bireysel',faruk:'Faruk — Bireysel',shared:'Orta
 const COLORS={ali:'#1D6AE5',faruk:'#0A9549',shared:'#7C3AED'};
 const SECS=['ali','faruk','shared'];
 
-let curY=2025, curM=3;
+const _now=new Date();
+let curY=_now.getFullYear(), curM=_now.getMonth();
 let selectedGoalDate=null; // {y,m,d}
 
 let db={
@@ -634,85 +600,34 @@ let db={
   goalLogs:{},   // glKey -> string (log text per day)
 };
 
-// ══════════════════════════════════════════════════════════════════
-// FIREBASE SAVE / LOAD
-// ══════════════════════════════════════════════════════════════════
-let _saveTimer=null;
-let _isListening=false;
-let _lastSaveStr='';
-
 function save(){
-  // Debounce: art arda çağrılırsa sadece son olanı kaydet
-  clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(async()=>{
-    const str=JSON.stringify(db);
-    if(str===_lastSaveStr)return; // değişiklik yoksa kaydetme
-    _lastSaveStr=str;
-    if(window._fbReady&&window._fbSave){
-      await window._fbSave(db);
-    } else {
-      localStorage.setItem('rt_v4',str);
+  try{localStorage.setItem('rt_v4',JSON.stringify(db));}catch(e){console.warn('save failed',e);}
+}
+function load(){
+  try{
+    const raw=localStorage.getItem('rt_v4');
+    if(raw){
+      const parsed=JSON.parse(raw);
+      if(parsed&&typeof parsed==='object'){
+        if(parsed.cells&&typeof parsed.cells==='object')db.cells=parsed.cells;
+        if(parsed.notes&&typeof parsed.notes==='object')db.notes=parsed.notes;
+        if(parsed.rDesc&&typeof parsed.rDesc==='object')db.rDesc=parsed.rDesc;
+        if(parsed.goalLogs&&typeof parsed.goalLogs==='object')db.goalLogs=parsed.goalLogs;
+        if(Array.isArray(parsed.goals))db.goals=parsed.goals;
+        if(parsed.routines&&typeof parsed.routines==='object'){
+          SECS.forEach(s=>{
+            if(Array.isArray(parsed.routines[s])&&parsed.routines[s].length)
+              db.routines[s]=parsed.routines[s];
+          });
+        }
+      }
     }
-  },600);
-}
-
-function applyDbData(data){
-  if(!data)return;
-  if(!data.cells)data.cells={};
-  if(!data.notes)data.notes={};
-  if(!data.rDesc)data.rDesc={};
-  if(!data.routines)data.routines={ali:[],faruk:[],shared:[]};
-  if(!data.goals)data.goals=[];
-  if(!data.goalLogs)data.goalLogs={};
-  SECS.forEach(s=>{if(!Array.isArray(data.routines[s]))data.routines[s]=[];});
-  db=data;
-  _lastSaveStr=JSON.stringify(db);
-}
-
-function seedIfEmpty(){
+  }catch(e){console.warn('load failed',e);}
   SECS.forEach(s=>{
     if(!db.routines[s].length){
       for(let i=0;i<5;i++)db.routines[s].push({id:uid(),name:''});
     }
   });
-}
-
-function load(){
-  // Önce localStorage'dan yükle (hızlı başlangıç)
-  try{
-    const d=localStorage.getItem('rt_v4');
-    if(d)applyDbData(JSON.parse(d));
-  }catch(e){}
-  seedIfEmpty();
-
-  // Firebase hazır olduğunda gerçek zamanlı dinlemeyi başlat
-  function startListening(){
-    if(_isListening)return;
-    _isListening=true;
-    showToast('☁️ Buluta bağlanıyor...');
-    window._fbListen(function(remoteData){
-      applyDbData(remoteData);
-      seedIfEmpty();
-      autoMiss();
-      buildAll();
-      if(document.getElementById('pg-hedefler').classList.contains('active')){
-        initGoalDate();renderGoals();
-      }
-      showToast('✓ Senkronize edildi');
-    });
-  }
-
-  if(window._fbReady){
-    startListening();
-  } else {
-    document.addEventListener('firebase-ready',startListening,{once:true});
-    // 3 saniye içinde Firebase gelmezse localStorage ile devam et
-    setTimeout(()=>{
-      if(!_isListening){
-        showToast('⚠️ Çevrimdışı mod');
-      }
-    },3000);
-  }
 }
 
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
@@ -741,7 +656,8 @@ function autoMiss(){
     db.routines[sec].forEach(r=>{
       for(let d=1;d<today;d++){
         const k=cKey(y,m,r.id,d);
-        if(db.cells[k]===undefined||db.cells[k]===0)db.cells[k]=2;
+        // only mark as miss if truly never touched (undefined) — never overwrite existing data
+        if(db.cells[k]===undefined)db.cells[k]=2;
       }
     });
   });
@@ -811,6 +727,11 @@ function buildAll(){
   document.getElementById('month-lbl').textContent=`${TR_MONTHS[curM]} ${curY}`;
   buildTable();
   renderScores();
+  // scroll today column into view on mobile
+  setTimeout(()=>{
+    const todayTh=document.querySelector('th.th-today');
+    if(todayTh)todayTh.scrollIntoView({inline:'center',block:'nearest',behavior:'smooth'});
+  },80);
 }
 
 function buildTable(){
@@ -1163,3 +1084,4 @@ buildAll();
 </script>
 </body>
 </html>
+
