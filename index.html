@@ -467,11 +467,14 @@ td.dc.dc-note::after{
   <div class="phead">
     <div class="phead-row">
       <div class="phead-title"><span class="t-ali">Ali</span> <span style="color:var(--txt4)">&</span> <span class="t-far">Faruk</span></div>
-      <div class="mnav">
-        <button class="mnav-today" onclick="goToday()">Bugün</button>
-        <button class="mnav-btn" onclick="prevMonth()">&#8249;</button>
-        <span class="mnav-label" id="month-lbl"></span>
-        <button class="mnav-btn" onclick="nextMonth()">&#8250;</button>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="sync-status" style="font-size:10px;font-weight:600;color:var(--txt3);">⏳ Bağlanıyor…</span>
+        <div class="mnav">
+          <button class="mnav-today" onclick="goToday()">Bugün</button>
+          <button class="mnav-btn" onclick="prevMonth()">&#8249;</button>
+          <span class="mnav-label" id="month-lbl"></span>
+          <button class="mnav-btn" onclick="nextMonth()">&#8250;</button>
+        </div>
       </div>
     </div>
   </div>
@@ -577,7 +580,28 @@ td.dc.dc-note::after{
 
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="module">
+// ══════════════════════════════════════════════════════════════════
+// FIREBASE SETUP
+// ══════════════════════════════════════════════════════════════════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, onValue, set, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAitWnYV1KmAJSOxzfETHE5K0V7D8w1yJI",
+  authDomain: "rutin-takip-web.firebaseapp.com",
+  databaseURL: "https://rutin-takip-web-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "rutin-takip-web",
+  storageBucket: "rutin-takip-web.firebasestorage.app",
+  messagingSenderId: "604716642468",
+  appId: "1:604716642468:web:5a4c7ca167135aba29f631",
+  measurementId: "G-6S069LYCP9"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const firebaseDb = getDatabase(firebaseApp);
+const DB_PATH = 'rutin_takip_v4';
+
 // ══════════════════════════════════════════════════════════════════
 // DATA & STORAGE
 // ══════════════════════════════════════════════════════════════════
@@ -589,42 +613,107 @@ const SECS=['ali','faruk','shared'];
 
 const _now=new Date();
 let curY=_now.getFullYear(), curM=_now.getMonth();
-let selectedGoalDate=null; // {y,m,d}
+let selectedGoalDate=null;
+let _saveTimer=null;
+let _fbReady=false;
 
 let db={
-  cells:{},      // cKey -> 0|1|2
-  notes:{},      // nKey -> string
-  rDesc:{},      // routineId -> desc string
+  cells:{},
+  notes:{},
+  rDesc:{},
   routines:{ali:[],faruk:[],shared:[]},
-  goals:[],      // [{id,owner,name,desc,expanded}]
-  goalLogs:{},   // glKey -> string (log text per day)
+  goals:[],
+  goalLogs:{},
 };
 
-function save(){
-  try{localStorage.setItem('rt_v4',JSON.stringify(db));}catch(e){console.warn('save failed',e);}
+// ── Gösterge: bağlantı durumu ──────────────────────────────────
+function setStatus(state){
+  const el=document.getElementById('sync-status');
+  if(!el)return;
+  if(state==='online'){el.textContent='🟢 Bağlı';el.style.color='var(--faruk)';}
+  else if(state==='saving'){el.textContent='⏳ Kaydediliyor…';el.style.color='var(--goal)';}
+  else if(state==='saved'){el.textContent='✓ Senkronize';el.style.color='var(--txt3)';}
+  else{el.textContent='🔴 Bağlantı yok';el.style.color='var(--miss)';}
 }
+
+// ── Firebase'e kaydet (debounced 800ms) ────────────────────────
+function save(){
+  // Önce localStorage'a da yaz (offline yedek)
+  try{localStorage.setItem('rt_v4_bak',JSON.stringify(db));}catch(e){}
+  clearTimeout(_saveTimer);
+  setStatus('saving');
+  _saveTimer=setTimeout(()=>{
+    set(ref(firebaseDb, DB_PATH), db)
+      .then(()=>setStatus('saved'))
+      .catch(e=>{console.warn('Firebase save failed',e);setStatus('offline');});
+  },800);
+}
+
+// ── Firebase'den yükle ─────────────────────────────────────────
 function load(){
-  try{
-    const raw=localStorage.getItem('rt_v4');
-    if(raw){
-      const parsed=JSON.parse(raw);
-      if(parsed&&typeof parsed==='object'){
-        if(parsed.cells&&typeof parsed.cells==='object')db.cells=parsed.cells;
-        if(parsed.notes&&typeof parsed.notes==='object')db.notes=parsed.notes;
-        if(parsed.rDesc&&typeof parsed.rDesc==='object')db.rDesc=parsed.rDesc;
-        if(parsed.goalLogs&&typeof parsed.goalLogs==='object')db.goalLogs=parsed.goalLogs;
-        if(Array.isArray(parsed.goals))db.goals=parsed.goals;
-        if(parsed.routines&&typeof parsed.routines==='object'){
-          SECS.forEach(s=>{
-            if(Array.isArray(parsed.routines[s])&&parsed.routines[s].length)
-              db.routines[s]=parsed.routines[s];
-          });
-        }
-      }
+  showToast('Veriler yükleniyor…');
+  get(ref(firebaseDb, DB_PATH)).then(snapshot=>{
+    if(snapshot.exists()){
+      mergeDb(snapshot.val());
+    } else {
+      // Firebase boşsa localStorage yedeğine bak
+      tryLoadLocalBackup();
     }
-  }catch(e){console.warn('load failed',e);}
+    ensureRoutineDefaults();
+    _fbReady=true;
+    autoMiss();
+    buildAll();
+    initGoalDate && renderGoals && (()=>{})();
+    showToast('Veriler yüklendi ✓');
+
+    // Gerçek zamanlı değişiklikleri dinle
+    onValue(ref(firebaseDb, DB_PATH), snap=>{
+      if(!snap.exists())return;
+      mergeDb(snap.val());
+      buildAll();
+      if(document.getElementById('pg-hedefler').classList.contains('active')){
+        renderGoalDateStrip();renderGoals();
+      }
+    });
+
+  }).catch(e=>{
+    console.warn('Firebase load failed',e);
+    setStatus('offline');
+    tryLoadLocalBackup();
+    ensureRoutineDefaults();
+    _fbReady=true;
+    autoMiss();
+    buildAll();
+    showToast('Çevrimdışı mod — yerel veri kullanılıyor');
+  });
+}
+
+function mergeDb(parsed){
+  if(!parsed||typeof parsed!=='object')return;
+  if(parsed.cells&&typeof parsed.cells==='object')db.cells=parsed.cells;
+  if(parsed.notes&&typeof parsed.notes==='object')db.notes=parsed.notes;
+  if(parsed.rDesc&&typeof parsed.rDesc==='object')db.rDesc=parsed.rDesc;
+  if(parsed.goalLogs&&typeof parsed.goalLogs==='object')db.goalLogs=parsed.goalLogs;
+  if(Array.isArray(parsed.goals))db.goals=parsed.goals;
+  if(parsed.routines&&typeof parsed.routines==='object'){
+    SECS.forEach(s=>{
+      if(Array.isArray(parsed.routines[s])&&parsed.routines[s].length)
+        db.routines[s]=parsed.routines[s];
+    });
+  }
+}
+
+function tryLoadLocalBackup(){
+  try{
+    const raw=localStorage.getItem('rt_v4_bak')||localStorage.getItem('rt_v4');
+    if(raw){mergeDb(JSON.parse(raw));}
+  }catch(e){}
+}
+
+function ensureRoutineDefaults(){
   SECS.forEach(s=>{
-    if(!db.routines[s].length){
+    if(!db.routines[s]||!db.routines[s].length){
+      db.routines[s]=[];
       for(let i=0;i<5;i++)db.routines[s].push({id:uid(),name:''});
     }
   });
@@ -656,7 +745,6 @@ function autoMiss(){
     db.routines[sec].forEach(r=>{
       for(let d=1;d<today;d++){
         const k=cKey(y,m,r.id,d);
-        // only mark as miss if truly never touched (undefined) — never overwrite existing data
         if(db.cells[k]===undefined)db.cells[k]=2;
       }
     });
@@ -674,6 +762,7 @@ function switchPage(name){
   document.getElementById('bn-'+name).classList.add('active');
   if(name==='hedefler'){initGoalDate();renderGoals();}
 }
+window.switchPage=switchPage;
 
 // ══════════════════════════════════════════════════════════════════
 // MONTH NAV
@@ -684,6 +773,9 @@ function goToday(){
   const n=new Date();curY=n.getFullYear();curM=n.getMonth();
   buildAll();
 }
+window.prevMonth=prevMonth;
+window.nextMonth=nextMonth;
+window.goToday=goToday;
 
 // ══════════════════════════════════════════════════════════════════
 // SCORES
@@ -838,6 +930,7 @@ function saveNote(){
   }
   closeOv('ov-note');
 }
+window.saveNote=saveNote;
 
 // ══════════════════════════════════════════════════════════════════
 // DETAIL MODAL
@@ -866,6 +959,7 @@ function saveDetail(){
   if(v)db.rDesc[r.id]=v;else delete db.rDesc[r.id];
   save();showToast('Kaydedildi ✓');closeOv('ov-detail');
 }
+window.saveDetail=saveDetail;
 
 // ══════════════════════════════════════════════════════════════════
 // ADD / DELETE ROUTINE
@@ -877,6 +971,7 @@ function openAddRoutine(sec){
   openOv('ov-add-r');
   setTimeout(()=>document.getElementById('add-r-name').focus(),300);
 }
+window.openAddRoutine=openAddRoutine;
 function doAddRoutine(){
   const sec=document.getElementById('add-r-sec').value;
   const name=document.getElementById('add-r-name').value.trim();
@@ -891,6 +986,8 @@ function deleteRoutine(sec,id){
   db.routines[sec]=db.routines[sec].filter(r=>r.id!==id);
   save();buildAll();showToast('Rutin silindi');
 }
+window.doAddRoutine=doAddRoutine;
+window.deleteRoutine=deleteRoutine;
 
 // ══════════════════════════════════════════════════════════════════
 // HEDEFLER — DATE STRIP
@@ -1022,6 +1119,7 @@ function saveGLog(gid){
   renderGoals();
   showToast('Kaydedildi ✓');
 }
+window.saveGLog=saveGLog;
 
 function toggleGoalExpand(id){
   const g=db.goals.find(x=>x.id===id);
@@ -1032,6 +1130,8 @@ function deleteGoal(id){
   db.goals=db.goals.filter(g=>g.id!==id);
   save();renderGoals();renderGoalDateStrip();showToast('Hedef silindi');
 }
+window.toggleGoalExpand=toggleGoalExpand;
+window.deleteGoal=deleteGoal;
 
 // ══════════════════════════════════════════════════════════════════
 // ADD GOAL
@@ -1051,12 +1151,16 @@ function doAddGoal(){
   db.goals.push({id:uid(),owner,name,desc,expanded:false});
   save();closeOv('ov-add-g');renderGoals();showToast('Hedef eklendi ✓');
 }
+window.openAddGoal=openAddGoal;
+window.doAddGoal=doAddGoal;
 
 // ══════════════════════════════════════════════════════════════════
 // MODAL HELPERS
 // ══════════════════════════════════════════════════════════════════
 function openOv(id){document.getElementById(id).classList.add('show');}
 function closeOv(id){document.getElementById(id).classList.remove('show');}
+window.openOv=openOv;
+window.closeOv=closeOv;
 document.querySelectorAll('.overlay').forEach(o=>{
   o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('show');});
 });
@@ -1078,10 +1182,8 @@ function esc(s){
 // ══════════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════════
-load();
-autoMiss();
-buildAll();
+load(); // Firebase'den yükle, hazır olunca buildAll çağrılır
+
 </script>
 </body>
 </html>
-
